@@ -47,12 +47,15 @@
   damage, movement/fire/use from the keyboard map, automap (line + textured modes), level title.
 - Audio verified in the page (?audiolog=1): clean RMS 200-1200 during play vs 550-1240 for retail data.
 - Drawn detail passes: monster eyes (front frames), carved demon-mask wall textures (19), computer screens
-  (SMON*, one colour per animated screen), key cards / skull keys, medikit / stimpack crosses, FINAL scene.
+  (SMON*, one colour per animated screen), key cards / skull keys, medikit / stimpack crosses, FINAL scene,
+  switch plates with indicator lights (SWX*), pentagram teleport pads (HTEL*), pinky demon toothed maw.
 - Clean ROM boots in N64Wasm: legal screen (re-typeset), title flyover demo, menus (pak prompt, New Game,
   Options, skill select) in our font with our cursor; demo gameplay renders with clean sprites/textures/sky.
 - Taint: `games/doom64/taint.py` (byte windows, image detail correlation, ROM data), `audio_taint.py`
   (0 flagged, max xcorr 0.48).
 
 ## Next
-- demon (pinky) jaws, emblem/pentagram textures (C77, CASFL28, HTEL*), switch textures (SWX*: button states
-  via palette variants), brighter lighting check vs retail, an audio listening pass (music timbres).
+- **For you to judge by ear**: music instruments are outline-shaped harmonic tones + a breath-noise bed
+  (`audio_gen._tonal`); sound effects are resynthesised noise from the outline. Say which ones sound wrong.
+- remaining polish: grate/emblem textures with alpha (C77, CASFL28), armour sheen, a lighting check vs retail.
+- Disk: this game uses ~0.2 GB on D: (browser profiles are now deleted after each headless shot).
