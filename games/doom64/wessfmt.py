@@ -440,13 +440,14 @@ def decode_sample(wdd: bytes, info: dict) -> np.ndarray:
 
 
 def loop_state_for(decoded, loop):
-    """ADPCM loop state = the 16 decoded samples preceding the loop start as
-    heard on wrap-around, i.e. the 16 samples ending at loop end (the decoder
-    uses the last `order` of them as history for the frame at loop start)."""
-    e = int(loop['end'])
+    """ADPCM loop state (libultra convention, verified 23/23 on retail): the
+    16 decoded samples of the frame that CONTAINS the loop start, i.e.
+    decoded[f*16:f*16+16] with f = start // 16. On wrap the synth serves the
+    tail of that frame from the state and resumes decoding at frame f+1."""
+    f = int(loop['start']) // 16
     s = np.zeros(16, dtype=np.int64)
-    seg = np.asarray(decoded[max(0, e - 16):e], dtype=np.int64)
-    s[16 - len(seg):] = seg
+    seg = np.asarray(decoded[f * 16:f * 16 + 16], dtype=np.int64)
+    s[:len(seg)] = seg
     return [int(v) for v in s]
 
 
@@ -665,14 +666,15 @@ def cmd_selftest(ddir):
         len(infos), time.time() - t0, lenok))
     print('    SNR dB min %.1f median %.1f mean %.1f (worst idx %d)' % (
         snrs.min(), np.median(snrs), snrs.mean(), int(np.argmin(snrs))))
-    print('    loop state == decoded[end-16:end] of retail: %d/%d' % (sum(st_orig), len(st_orig)))
+    print('    loop state == frame containing loop start (retail): %d/%d' % (sum(st_orig), len(st_orig)))
     new = rebuild_wdd(wmd, blobs, len(wdd))
     offs_ok = all(sample_info(wmd, i)['offset'] == s['offset'] for i, s in enumerate(wmd['samples']))
     print('(c) rebuilt WDD size %d == %d: %s; offsets unchanged: %s; identical bytes: %.1f%%' % (
         len(new), len(wdd), len(new) == len(wdd), offs_ok,
         100.0 * np.mean(np.frombuffer(new, np.uint8) == np.frombuffer(wdd, np.uint8))))
-    ok2 = len(write_wmd(wmd2)) == len(wmdb)
-    print('    WMD with recomputed loop states: size unchanged %s' % ok2)
+    w2 = write_wmd(wmd2)
+    print('    WMD with recomputed loop states: size unchanged %s, identical %s' % (
+        len(w2) == len(wmdb), w2 == wmdb))
     # clean-style book from own pcm for a few samples
     for i in [0, int(np.argmin(snrs)), len(infos) - 1]:
         info = infos[i]

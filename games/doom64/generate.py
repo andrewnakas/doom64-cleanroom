@@ -38,11 +38,19 @@ def h32(*parts):
 def upsample_grid(g, w, h):
     n = int(round(len(g) ** 0.5))
     g = np.asarray(g, np.float32).reshape(n, n, 3)
-    ys = (np.arange(h, dtype=np.float32) + 0.5) / h * n - 0.5
-    xs = (np.arange(w, dtype=np.float32) + 0.5) / w * n - 0.5
-    y0 = np.clip(np.floor(ys).astype(int), 0, n - 1)
-    x0 = np.clip(np.floor(xs).astype(int), 0, n - 1)
-    y1, x1 = np.clip(y0 + 1, 0, n - 1), np.clip(x0 + 1, 0, n - 1)
+    # pool so no cell is narrower than 8 px: on thin strips / tiny sprites a 4x4 grid would
+    # otherwise be near full resolution along the short axis
+    ny, nx = n, n
+    while ny > 1 and h / ny < 8:
+        ny //= 2
+    while nx > 1 and w / nx < 8:
+        nx //= 2
+    g = g.reshape(ny, n // ny, nx, n // nx, 3).mean((1, 3))
+    ys = (np.arange(h, dtype=np.float32) + 0.5) / h * ny - 0.5
+    xs = (np.arange(w, dtype=np.float32) + 0.5) / w * nx - 0.5
+    y0 = np.clip(np.floor(ys).astype(int), 0, ny - 1)
+    x0 = np.clip(np.floor(xs).astype(int), 0, nx - 1)
+    y1, x1 = np.clip(y0 + 1, 0, ny - 1), np.clip(x0 + 1, 0, nx - 1)
     fy = np.clip(ys - np.floor(ys), 0, 1)[:, None, None]
     fx = np.clip(xs - np.floor(xs), 0, 1)[None, :, None]
     top = g[y0][:, x0] * (1 - fx) + g[y0][:, x1] * fx
@@ -93,10 +101,12 @@ def shaded_sprite(e, w, h):
     nrm = np.sqrt(gx * gx + gy * gy + nz * nz)
     lx, ly, lz = -0.45, -0.6, 0.66
     lam = np.clip((-gx * lx - gy * ly + nz * lz) / nrm, 0, 1)
-    shade = 0.45 + 0.75 * lam
-    rim = (d <= 1.0) & m
-    shade = np.where(rim, shade * 0.55, shade)
-    shade *= 1.0 + 0.06 * noise(h32("grain", e["name"]), w, h, cell=2.0)
+    tiny = min(w, h) <= 20
+    shade = np.full_like(lam, 0.9) if tiny else (0.45 + 0.75 * lam)
+    if not tiny:   # on tiny sprites the rim would just trace the kept outline
+        rim = (d <= 1.0) & m
+        shade = np.where(rim, shade * 0.55, shade)
+    shade *= 1.0 + (0.18 if tiny else 0.06) * noise(h32("grain", e["name"]), w, h, cell=2.0)
     rgb = col * shade[..., None]
     return np.dstack([rgb, a]).clip(0, 255).astype(np.uint8)
 

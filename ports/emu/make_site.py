@@ -57,6 +57,9 @@ window.cleanroomKeys = function (spec) {
       if (hint && ok) hint.style.display = 'none';
     } catch (e) {}
   }
+  document.addEventListener('keydown', e => {
+    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key) && e.target === document.body) e.preventDefault();
+  }, true);
   ['pointerdown', 'mousedown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, wake, true));
   setInterval(wake, 1000);
 })();
@@ -73,6 +76,19 @@ if (new URLSearchParams(location.search).get('audiolog')) {
 }
 """
 
+KEYMAP = {  # N64Wasm defaults -> Doom 64 (default config: Z fire, C> use, C^ map, C< run, Cv strafe, L/R strafe, A/B weapons)
+    "Mapping_Up": "'w'", "Mapping_Down": "'s'", "Mapping_Left": "','", "Mapping_Right": "'.'",
+    "Mapping_Action_A": "'q'", "Mapping_Action_B": "'r'", "Mapping_Action_Start": "'Enter'",
+    "Mapping_Action_CUP": "'m'", "Mapping_Action_CDOWN": "'c'", "Mapping_Action_CLEFT": "'shift'",
+    "Mapping_Action_CRIGHT": "'e'", "Mapping_Action_Z": "' '", "Mapping_Action_L": "'a'", "Mapping_Action_R": "'d'",
+    "Joy_Mapping_Action_A": "2", "Joy_Mapping_Action_B": "3", "Joy_Mapping_Action_Z": "7",
+    "Joy_Mapping_Action_L": "4", "Joy_Mapping_Action_R": "5", "Joy_Mapping_Action_CLEFT": "1",
+    "Joy_Mapping_Action_CRIGHT": "0", "Joy_Mapping_Action_CUP": "8", "Joy_Mapping_Action_CDOWN": "6",
+}
+# letters arrive upper-case while Shift (run) is held: match mappings case-insensitively
+NORMALIZE_KEY = """
+        if (event.key && (event.key.length == 1 || event.key == 'Shift')) event = { key: event.key.toLowerCase() };"""
+
 SOUND_HINT = """<div id="soundHint" style="max-width:720px;margin:8px auto;padding:6px 10px;background:#fff3cd;
 border:1px solid #e0c060;border-radius:6px;font-size:14px">Sound starts after your first click or key press
 on this page (browsers block audio until then).</div>"""
@@ -80,16 +96,19 @@ on this page (browsers block audio until then).</div>"""
 
 INFO = """
 <div style="max-width:720px;margin:16px auto;font-size:14px;line-height:1.45;text-align:left">
-<p><b>Controls</b>: arrow keys = stick (move/turn) &middot; <b>A</b> = Z (fire) &middot; <b>D</b> = A (use / change weapon) &middot;
-<b>S</b> = B &middot; <b>Q</b>/<b>E</b> = L/R (aim) &middot; <b>Enter</b> = Start &middot; <b>I J K L</b> = C buttons (look / strafe) &middot;
-gamepads work too (remap under the <code>`</code> menu).</p>
-<p>GoldenEye 007 built from the <a href="https://github.com/n64decomp/007">n64decomp/007</a> decompilation.
-Every texture (2,698 image-bank textures), font glyph, logo surface, the gun-barrel picture and every
-instrument/sound-effect sample was regenerated from coarse facts (size, format, a colour grid, a 2-bit alpha
-outline; sample length, loops and a spectral outline) &mdash; no original pixels or samples are included.
-Music note data, level geometry, text and game code come from the decomp. Runs on
-<a href="https://github.com/nbarkhina/N64Wasm">N64Wasm</a> (MIT).
-Source: <a href="https://github.com/andrewnakas/goldeneye-cleanroom">andrewnakas/goldeneye-cleanroom</a>.</p>
+<p><b>Controls</b> (keyboard): <b>arrow keys</b> = stick (turn / move) &middot; <b>W</b>/<b>S</b> = forward / back &middot;
+<b>A</b>/<b>D</b> = strafe &middot; <b>Space</b> = fire &middot; <b>E</b> = use / open &middot; <b>Shift</b> = run &middot;
+<b>Q</b>/<b>R</b> = previous / next weapon (and select / back in menus) &middot; <b>M</b> = map &middot;
+<b>C</b> = strafe modifier &middot; <b>Enter</b> = Start (menus, pause).
+<b>Gamepad</b>: left stick move/turn, RT fire, LB/RB strafe, A use, B run, X/Y weapons, Back map, LT strafe modifier, Start.
+Remap anything under the <code>`</code> menu.</p>
+<p>Doom 64 built from <a href="https://github.com/Erick194/DOOM64-RE">DOOM64-RE</a> (Erick194, GPL-3) with an SDK-free
+toolchain. Every sprite, wall/floor texture, sky, font, menu symbol, HUD icon and picture (title, credits, legal
+screens) and every instrument / sound-effect sample was regenerated from coarse facts (size, format, a colour grid,
+a 2-bit alpha outline; sample length, loops, pitch and a spectral outline) or drawn from scratch &mdash; no original
+pixels or samples are included. Level geometry, music note data, demo inputs, text and game code come from the
+decomp / level data. Runs on <a href="https://github.com/nbarkhina/N64Wasm">N64Wasm</a> (MIT).
+Source: <a href="https://github.com/andrewnakas/doom64-cleanroom">andrewnakas/doom64-cleanroom</a>.</p>
 </div>
 """
 
@@ -102,7 +121,7 @@ def main():
     ap.add_argument("--index", default=os.path.join(HERE, "index.html"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    for f in ("assets.zip", "input_controller.js", "n64wasm.js", "n64wasm.wasm", "settings.js"):
+    for f in ("assets.zip", "n64wasm.js", "n64wasm.wasm", "settings.js"):
         shutil.copy(os.path.join(a.n64wasm, f), os.path.join(a.out, f))
     src = open(os.path.join(a.n64wasm, "script.js"), encoding="utf-8").read()
     old_start = src.index("    async initModule(){")
@@ -117,12 +136,22 @@ def main():
     # IndexedDB can answer before `myClass` exists on a slow page load (TDZ ReferenceError)
     src = src.replace("myClass.dblist.push(rom);", "try { myClass.dblist.push(rom); } catch (e) {}", 1)
     src = src.replace("if (myClass.dblist.length > 0) {", "if (false) {", 1)
+    # per-game key mapping storage (all the clean-room sites share one origin)
+    src = src.replace("n64wasm_mappings_v3", "doom64cr_mappings_v1")
     open(os.path.join(a.out, "script.js"), "w", encoding="utf-8").write(KEYS_JS + src)
+    ic = open(os.path.join(a.n64wasm, "input_controller.js"), encoding="utf-8").read()
+    for k, v in KEYMAP.items():
+        ic, n = re.subn(r"(%s: )([^,]+),\n" % k, lambda m: m.group(1) + v + ",\n", ic, count=1)
+        if not n:
+            raise SystemExit("keymap default not found: " + k)
+    for fn in ("keyDown(event) {", "keyUp(event) {"):
+        ic = ic.replace(fn, fn + NORMALIZE_KEY, 1)
+    open(os.path.join(a.out, "input_controller.js"), "w", encoding="utf-8").write(ic)
     open(os.path.join(a.out, "romlist.js"), "w").write("var ROMLIST = [];\nwindow.SITE_ROM = 'game.z64';\n")
     idx = a.index if os.path.exists(a.index) else os.path.join(a.n64wasm, "index.html")
     html = open(idx, encoding="utf-8").read()
-    html = html.replace("<title>N64 Wasm</title>", "<title>GoldenEye 007 clean room</title>")
-    html = re.sub(r"<h1>\s*N64 Wasm", '<h1>GoldenEye 007 <small style="font-size:50%">clean room</small>', html, 1)
+    html = html.replace("<title>N64 Wasm</title>", "<title>Doom 64 clean room</title>")
+    html = re.sub(r"<h1>\s*N64 Wasm", '<h1>Doom 64 <small style="font-size:50%">clean room</small>', html, 1)
     html = html.replace('<div id="bottomPanel"', SOUND_HINT + INFO + '<div id="bottomPanel"', 1)
     # serve the page's libraries ourselves (a slow or blocked CDN left the emulator hidden)
     vend = os.path.join(HERE, "vendor")
