@@ -182,6 +182,50 @@ def screen(col, w, h, seed, family_seed):
 def special(name, col, w, h, seed, n):
     if name.startswith(SCREENS):   # SMONxA..D are animation frames of one screen: same colour
         return screen(col, w, h, seed, sum(map(ord, name[:5])))
+    if name.startswith("SWX"):
+        return switch(col, w, h, seed, n)
+    if name.startswith("HTEL"):
+        return teleport_pad(col, w, h, seed, n)
     if name in FACES:
         return emboss(relief_face(w, h, seed, horns=not name.startswith("CFACE")), col, n)
     return None
+
+
+def switch(col, w, h, seed, n):
+    """Wall switch: bevelled plate with a raised button and an indicator light (on/off states come
+    from the kept palette-variant matrices, which recolour the whole palette)."""
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cy, cx = h / 2, w / 2
+    plate = (np.abs(yy - cy) < h * 0.42) & (np.abs(xx - cx) < w * 0.42)
+    Hm = plate * 0.3
+    bw = min(w, h) * 0.2
+    Hm = Hm + 0.5 * np.clip(1 - np.maximum(np.abs(yy - cy - h * 0.08), np.abs(xx - cx)) / bw, 0, 0.35) / 0.35
+    out = emboss(Hm, col, n)
+    lamp = ((yy - (cy - h * 0.25)) ** 2 + (xx - cx) ** 2) <= (min(w, h) * 0.07) ** 2
+    out[lamp] = np.array([80, 255, 80], np.float32) * 0.5 + col[lamp] * 0.5
+    return out
+
+
+def teleport_pad(col, w, h, seed, n):
+    """Teleporter plate: carved pentagram in a ring with a glowing eye in the middle."""
+    import math
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cy, cx, r = h / 2, w / 2, min(w, h) * 0.42
+    d = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+    Hm = 0.4 * (np.abs(d - r) < max(1.0, r * 0.06))
+    pts = [(cy - r * 0.95 * math.cos(a), cx + r * 0.95 * math.sin(a)) for a in [k * 4 * math.pi / 5 for k in range(5)]]
+    for i in range(5):
+        (y0, x0), (y1, x1) = pts[i], pts[(i + 1) % 5]
+        t = np.clip(((yy - y0) * (y1 - y0) + (xx - x0) * (x1 - x0)) / ((y1 - y0) ** 2 + (x1 - x0) ** 2), 0, 1)
+        dl = np.sqrt((yy - y0 - t * (y1 - y0)) ** 2 + (xx - x0 - t * (x1 - x0)) ** 2)
+        Hm = np.maximum(Hm, 0.4 * (dl < max(1.0, r * 0.05)))
+    out = emboss(ndimage_blur(Hm), col, n)
+    eye = d <= r * 0.16
+    out[eye] = np.array([40, 230, 170], np.float32) * (1.2 - d[eye, None] / (r * 0.16) * 0.6)
+    out[d <= r * 0.05] = (10, 30, 20)
+    return out
+
+
+def ndimage_blur(a):
+    from scipy import ndimage
+    return ndimage.gaussian_filter(a.astype(np.float32), 0.7)
