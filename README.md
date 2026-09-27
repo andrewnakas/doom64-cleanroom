@@ -20,6 +20,14 @@ with an SDK-free toolchain, where every asset the game reads from its data files
 No original pixels or samples are included; a taint scan (`games/doom64/taint.py`, dev only) checks the
 clean data against retail (byte windows, image detail correlation, audio cross-correlation).
 
+| Title menu | Skill select | In game | Automap |
+|---|---|---|---|
+| ![](docs/screens/title.png) | ![](docs/screens/menu.png) | ![](docs/screens/gameplay.png) | ![](docs/screens/automap.png) |
+
+Regenerated monster sprites (front frames, with drawn eyes):
+
+![](docs/screens/monsters.png)
+
 ## How it is built
 
 `sh games/doom64/build_all.sh <your Doom 64 (USA) z64>`:
