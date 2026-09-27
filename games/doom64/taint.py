@@ -53,8 +53,12 @@ def windows(b: bytes, step=1):
 def low_info(w: bytes) -> bool:
     """A colour ramp (16-bit values in arithmetic progression) padded with zeros, at either alignment,
     or 4-bit index data using at most 3 distinct nibbles (a smooth gradient run)."""
-    if len({n for b in w for n in (b >> 4, b & 15)}) <= 3:
+    nib = [n for b in w for n in (b >> 4, b & 15)]
+    if len(set(nib)) <= 3:
         return True
+    d = [b - a for a, b in zip(nib, nib[1:])]
+    if len(set(nib)) <= 5 and (all(x >= 0 for x in d) or all(x <= 0 for x in d)):
+        return True     # a monotonic 4-bit gradient run
     for ph in (0, 1):
         v = [w[i] << 8 | w[i + 1] for i in range(ph, len(w) - 1, 2)]
         while v and v[0] == 0:
@@ -63,6 +67,9 @@ def low_info(w: bytes) -> bool:
             v.pop()
         if len(v) < 3 or len({b - a for a, b in zip(v, v[1:])}) == 1:
             return True
+        grey = all((x >> 11) == ((x >> 6) & 31) == ((x >> 1) & 31) for x in v)
+        if grey and all(b > a for a, b in zip(v, v[1:])):
+            return True     # a monotonic greyscale ramp (RGBA5551 r = g = b)
     return False
 
 
