@@ -158,6 +158,7 @@ def main():
     finally:
         p.kill()
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+        shutil.rmtree(prof, ignore_errors=True)   # profiles are ~30 MB each: don't keep them
     open(os.path.join(a.out, "console.txt"), "w", encoding="utf-8").write("\n".join(console))
     print(f"{len(shots)} shots, {len(console)} console lines -> {a.out}")
     for line in console[-8:]:

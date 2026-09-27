@@ -171,7 +171,7 @@ def emissive_sprite(e, w, h):
 # Faces: which monster families get eyes on front-facing frames, and how.
 # kind: "pair" = two eyes in the head (topmost part of the silhouette),
 #       "cyclops" = one big eye in the middle of the body.
-EYES = {"TROO": ("pair", (255, 170, 30)), "SARG": ("pair", (255, 60, 30)), "BOSS": ("pair", (120, 255, 60)),
+EYES = {"TROO": ("pair", (255, 170, 30)), "SARG": ("maw", (255, 60, 30)), "BOSS": ("pair", (120, 255, 60)),
         "BOS2": ("pair", (255, 200, 60)), "FATT": ("pair", (255, 210, 60)), "POSS": ("pair", (255, 40, 30)),
         "CYBR": ("pair", (255, 60, 20)), "BSPI": ("pair", (60, 200, 255)), "RECT": ("pair", (255, 230, 90)),
         "SKUL": ("pair", (255, 240, 200)), "PLAY": ("visor", (90, 200, 90)),
@@ -196,6 +196,27 @@ def add_eyes(img, e):
     top, bot = rows[0], rows[-1]
     sh = bot - top + 1
     out = img.astype(np.float32).copy()
+    if kind == "maw":
+        # pinky demon: a wide toothed jaw across the upper body, small eyes above it
+        my = int(top + sh * 0.30)
+        xs = np.flatnonzero(m[my])
+        if len(xs) < 8:
+            return img
+        cx, half = xs.mean(), (xs[-1] - xs[0]) * 0.2
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        jaw = (((yy - my) / max(1.5, sh * 0.06)) ** 2 + ((xx - cx) / max(2.0, half)) ** 2 <= 1) & m
+        out[jaw, :3] = (60, 8, 8)
+        nt = max(3, int(half // 2))
+        for k in range(nt):
+            tx = cx - half + (k + 0.5) * 2 * half / nt
+            for ty, sgn in ((my - sh * 0.06, 1), (my + sh * 0.06, -1)):
+                tooth = (np.abs(xx - tx) <= 0.8) & (sgn * (yy - ty) >= 0) & (sgn * (yy - ty) <= max(1.5, sh * 0.035)) & jaw
+                out[tooth, :3] = (235, 225, 200)
+        for side in (-1, 1):
+            ey, ex = top + sh * 0.17, cx + side * half * 0.6
+            eye = ((yy - ey) ** 2 + (xx - ex) ** 2 <= 1.1) & m
+            out[eye, :3] = color
+        return out
     if kind == "cyclops":
         cy = top + sh * 0.45
         xs = np.flatnonzero(m[int(cy)])
