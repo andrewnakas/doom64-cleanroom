@@ -535,6 +535,62 @@ def label_panel(text, w, h, bg, ink):
     return img
 
 
+def draw_final(e, w, h):
+    """End picture: a marine seen from behind on a hellish ridge under a red sky.
+    Colours follow the kept 16x16 grid; the scene is drawn from scratch."""
+    from generate import upsample_grid, noise, h32
+    base = upsample_grid(e["grid"], w, h)
+    ys = np.linspace(0, 1, h, dtype=np.float32)[:, None, None]
+    clouds = noise(h32("final-sky"), w, h, cell=40.0, octaves=5)[..., None]
+    sky = base * (0.8 + 0.35 * clouds) + np.array([60, 0, 0], np.float32) * (1 - ys)
+    img = np.dstack([sky, np.full((h, w), 255, np.float32)])
+    ss = 3
+    im = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    rng = np.random.default_rng(h32("final-ridge"))
+    for layer, (y0, amp, col) in enumerate([(0.55, 0.10, (70, 12, 8, 255)), (0.66, 0.08, (40, 6, 4, 255)),
+                                            (0.80, 0.05, (18, 3, 2, 255))]):
+        xs = np.linspace(0, w * ss, 40)
+        ridge = y0 * h * ss - amp * h * ss * np.abs(np.cumsum(rng.normal(0, 1, 40)) / 4)
+        d.polygon([(0, h * ss)] + list(zip(xs, ridge)) + [(w * ss, h * ss)], fill=col)
+    ridges = np.asarray(im.resize((w, h), Image.LANCZOS), np.float32)
+    ra = ridges[..., 3:4] / 255
+    img[..., :3] = img[..., :3] * (1 - ra) + ridges[..., :3] * ra
+    # the marine, from behind: boots, legs, belt, torso with pack, shoulder pads, arms, helmet
+    cx, gy = w * ss * 0.5, h * ss * 0.88
+    s = h * ss / 240
+    fig = Image.new("L", (w * ss, h * ss), 0)
+    f = ImageDraw.Draw(fig)
+    for side in (-1, 1):
+        f.polygon([(cx + side * 5 * s, gy - 62 * s), (cx + side * 19 * s, gy - 62 * s),
+                   (cx + side * 17 * s, gy - 6 * s), (cx + side * 6 * s, gy - 6 * s)], fill=255)   # legs
+        f.rounded_rectangle([cx + min(side * 4, side * 20) * s, gy - 10 * s, cx + max(side * 4, side * 20) * s, gy],
+                            radius=3 * s, fill=255)                                                    # boots
+        f.polygon([(cx + side * 22 * s, gy - 118 * s), (cx + side * 31 * s, gy - 108 * s),
+                   (cx + side * 29 * s, gy - 74 * s), (cx + side * 22 * s, gy - 76 * s)], fill=255)   # arms
+        f.ellipse([cx + side * 26 * s - 10 * s, gy - 126 * s, cx + side * 26 * s + 10 * s, gy - 106 * s], fill=255)
+    f.polygon([(cx - 23 * s, gy - 120 * s), (cx + 23 * s, gy - 120 * s), (cx + 19 * s, gy - 66 * s),
+               (cx - 19 * s, gy - 66 * s)], fill=255)                                                  # torso
+    f.ellipse([cx - 10 * s, gy - 142 * s, cx + 10 * s, gy - 118 * s], fill=255)                     # helmet
+    m = np.asarray(fig.resize((w, h), Image.LANCZOS), np.float32) / 255 > 0.5
+    dist = ndimage.distance_transform_edt(m)
+    hgt = ndimage.gaussian_filter(np.sqrt(np.minimum(dist, 6) / 6), 1.0)
+    gy_, gx_ = np.gradient(hgt * 5)
+    lam = np.clip((gx_ * 0.6 + gy_ * 0.5 + 0.6) / np.sqrt(gx_ ** 2 + gy_ ** 2 + 1), 0, 1)
+    armour = np.array([46, 62, 40], np.float32)
+    col = armour * (0.35 + 0.8 * lam)[..., None]
+    yy = np.arange(h)[:, None] * np.ones((1, w))
+    belt = m & (np.abs(yy - (gy / ss - 66 * s / ss)) < 2)
+    pack = m & (np.abs(np.arange(w)[None, :] - cx / ss) < 9 * s / ss) & (yy > gy / ss - 112 * s / ss) & (yy < gy / ss - 86 * s / ss)
+    col[belt] = (70, 50, 30)
+    col[pack] = col[pack] * 0.7 + np.array([30, 30, 26]) 
+    rim = m & (dist <= 1.2)
+    col[rim] = np.minimum(255, col[rim] * 0.5 + np.array([150, 40, 25]))
+    img[m, :3] = col[m]
+    img[..., 3] = 255
+    return img
+
+
 # ------------------------------------------------------------------ dispatch
 def draw(e, w, h):
     n = e["name"]
@@ -561,6 +617,8 @@ def draw(e, w, h):
                        [int(h * 0.55), int(h * 0.16)], top=(250, 250, 250), bottom=(150, 150, 160))
     elif n == "SPACE":
         img = draw_space(w, h)
+    elif n == "FINAL":
+        img = draw_final(e, w, h)
     elif n.startswith("MOUNT"):
         img = draw_mountains(e, w, h)
     elif n in ("SEXIT", "SEXITA"):

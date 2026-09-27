@@ -259,6 +259,35 @@ def wall_texture(e, w, h):
     return np.dstack([col, alpha_of(e, w, h)]).clip(0, 255).astype(np.uint8)
 
 
+def item_decals(img, e):
+    """Readable item markings drawn over the generated sprite (inside the kept outline)."""
+    n = e["name"]
+    if n not in ("MEDIA0", "STIMA0", "SBOXA0"):
+        return img
+    out = img.astype(np.float32).copy()
+    m = out[..., 3] > 0
+    ys, xs = np.nonzero(m)
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    cy, cx = (y0 + y1) / 2, (x0 + x1) / 2
+    if n in ("MEDIA0", "STIMA0"):
+        out[m, :3] = out[m, :3] * 0.35 + np.array([200, 200, 195]) * 0.65     # white case
+        arm = max(1, int((x1 - x0) * 0.09))
+        L = max(2, int(min(x1 - x0, y1 - y0) * 0.3))
+        yy, xx = np.mgrid[0:img.shape[0], 0:img.shape[1]]
+        cross = ((np.abs(yy - cy) <= arm) & (np.abs(xx - cx) <= L)) | ((np.abs(xx - cx) <= arm) & (np.abs(yy - cy) <= L))
+        out[cross & m, :3] = (210, 20, 20)
+    else:
+        import drawn
+        band_h = max(5, int((y1 - y0) * 0.35))
+        label = drawn.label_panel("SHELLS", x1 - x0 - 1, band_h, (150, 30, 20), (255, 220, 120))
+        by = int(cy - band_h / 2)
+        region = out[by:by + band_h, x0 + 1:x1]
+        lm = label[: region.shape[0], : region.shape[1]]
+        sel = m[by:by + band_h, x0 + 1:x1] & (lm[..., 3] > 0)
+        region[sel, :3] = lm[sel, :3]
+    return out
+
+
 def textured(e, w, h, amount=0.10):
     col = upsample_grid(e["grid"], w, h)
     n = noise(h32("tex", e["name"]), w, h, cell=8.0, octaves=3)
@@ -303,7 +332,7 @@ def image_for(e):
     if e["kind"] == "sprite" and e["name"].startswith(EMISSIVE):
         return add_eyes(emissive_sprite(e, w, h), e)
     if e["kind"] == "sprite":
-        return add_eyes(shaded_sprite(e, w, h), e)
+        return item_decals(add_eyes(shaded_sprite(e, w, h), e), e)
     if e["kind"] == "sprite_gfx":
         return shaded_sprite(e, w, h)
     return textured(e, w, h, 0.06)
