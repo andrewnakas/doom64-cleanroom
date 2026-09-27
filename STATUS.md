@@ -57,5 +57,7 @@
 ## Next
 - **For you to judge by ear**: music instruments are outline-shaped harmonic tones + a breath-noise bed
   (`audio_gen._tonal`); sound effects are resynthesised noise from the outline. Say which ones sound wrong.
-- remaining polish: grate/emblem textures with alpha (C77, CASFL28), armour sheen, a lighting check vs retail.
+- Lighting: each image's mean brightness now matches its kept grid (it was 10-30% dark). Rooms like the
+  MAP01 start are still dim because of the map's own sector lights (kept); Options > Brightness helps.
+- remaining polish: grate/emblem textures with alpha (C77, CASFL28), armour sheen.
 - Disk: this game uses ~0.2 GB on D: (browser profiles are now deleted after each headless shot).
