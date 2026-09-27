@@ -233,6 +233,32 @@ def add_eyes(img, e):
     return out
 
 
+def upsample_grid_wrap(g, w, h):
+    """Bilinear grid upsample on a torus (wall/floor textures tile)."""
+    n = int(round(len(g) ** 0.5))
+    g = np.asarray(g, np.float32).reshape(n, n, 3)
+    ny, nx = n, n
+    while ny > 1 and h / ny < 8:
+        ny //= 2
+    while nx > 1 and w / nx < 8:
+        nx //= 2
+    g = g.reshape(ny, n // ny, nx, n // nx, 3).mean((1, 3))
+    ys = (np.arange(h, dtype=np.float32) + 0.5) / h * ny - 0.5
+    xs = (np.arange(w, dtype=np.float32) + 0.5) / w * nx - 0.5
+    y0, x0 = np.floor(ys).astype(int), np.floor(xs).astype(int)
+    fy, fx = (ys - y0)[:, None, None], (xs - x0)[None, :, None]
+    y0, x0, y1, x1 = y0 % ny, x0 % nx, (y0 + 1) % ny, (x0 + 1) % nx
+    top = g[y0][:, x0] * (1 - fx) + g[y0][:, x1] * fx
+    bot = g[y1][:, x0] * (1 - fx) + g[y1][:, x1] * fx
+    return top * (1 - fy) + bot * fy
+
+
+def wall_texture(e, w, h):
+    import textures
+    col = textures.synth(e["name"], upsample_grid_wrap(e["grid"], w, h), w, h, h32("tex", e["name"]))
+    return np.dstack([col, alpha_of(e, w, h)]).clip(0, 255).astype(np.uint8)
+
+
 def textured(e, w, h, amount=0.10):
     col = upsample_grid(e["grid"], w, h)
     n = noise(h32("tex", e["name"]), w, h, cell=8.0, octaves=3)
@@ -268,7 +294,7 @@ def image_for(e):
     if e["kind"] == "cloud":
         return cloud_image(e, w, h)
     if e["kind"] == "texture":
-        return textured(e, w, h)
+        return wall_texture(e, w, h)
     if e["kind"] == "sprite" and e["name"].startswith(WEAPONS):
         # first-person weapons: bright frames are muzzle flashes
         if luminance(np.asarray(e["grid"]).mean(0)) > 150:
