@@ -65,6 +65,9 @@ def synth(name, col, w, h, seed):
     """col: h x w x 3 grid colour. Returns h x w x 3 float."""
     fam = family(name)
     n = pnoise(seed, w, h, cell=max(4.0, min(w, h) / 6), octaves=4)
+    sp = special(name, col, w, h, seed, n)
+    if sp is not None:
+        return sp
     if fam == "liquid":
         wave = pnoise(seed + 1, w, h, cell=max(8.0, min(w, h) / 3), octaves=2)
         return col * (1.0 + 0.18 * wave[..., None] + 0.05 * n[..., None])
@@ -109,3 +112,76 @@ def synth(name, col, w, h, seed):
         shade = (0.55 + 0.45 * crack) * (1.0 + 0.16 * n)
         return col * shade[..., None]
     return col * (1.0 + 0.12 * n[..., None])
+
+
+# ------------------------------------------------------------------ faces and screens
+# Carved faces (gargoyles, demon masks) and computer screens, by texture name (kept directory facts).
+FACES = ("C1", "C22", "C23", "C302", "C306", "C307", "C307B", "C308", "C42", "C58", "C62", "C63",
+         "CFACEA", "CFACEB", "CFACEC", "H30", "H31", "H66", "HELLAS")
+SCREENS = ("SMON",)
+
+
+def _ellipse(yy, xx, cy, cx, ry, rx):
+    return np.clip(1 - ((yy - cy) / ry) ** 2 - ((xx - cx) / rx) ** 2, 0, 1)
+
+
+def relief_face(w, h, seed, horns=True):
+    """Height field of a carved demon face filling the texture (0..1)."""
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cy, cx = h * rng.uniform(0.5, 0.58), w * 0.5
+    ew, ms, hw = rng.uniform(0.1, 0.16), rng.uniform(0.12, 0.2), rng.uniform(0.3, 0.4)
+    H = 0.6 * np.sqrt(_ellipse(yy, xx, cy, cx, h * 0.42, w * hw))                     # head mass
+    brow = np.sqrt(_ellipse(yy, xx, cy - h * 0.12, cx, h * 0.07, w * 0.3)) * 0.35
+    H = H + brow
+    for side in (-1, 1):
+        H -= 0.45 * np.sqrt(_ellipse(yy, xx, cy - h * 0.02, cx + side * w * ew, h * 0.07, w * 0.08))  # sockets
+        H += 0.25 * np.sqrt(_ellipse(yy, xx, cy - h * 0.02, cx + side * w * ew, h * 0.03, w * 0.035))  # eyeballs
+        if horns:
+            t = np.clip((cy - h * 0.2 - yy) / (h * 0.3), 0, 1)
+            hx = cx + side * (w * 0.22 + t * w * 0.14 * rng.uniform(0.8, 1.2))
+            H += 0.45 * np.clip(1 - np.abs(xx - hx) / (w * 0.06 * (1.1 - t)), 0, 1) * (t > 0) * (yy > h * 0.02)
+    H += 0.35 * np.sqrt(_ellipse(yy, xx, cy + h * 0.1, cx, h * 0.1, w * 0.06))                 # nose
+    my = cy + h * 0.25
+    mouth = _ellipse(yy, xx, my, cx, h * 0.07, w * ms)
+    H -= 0.45 * np.sqrt(mouth)
+    # fangs: downward triangles hanging from the upper lip
+    nf = int(rng.integers(3, 6))
+    for k in range(nf):
+        fx = cx + (k - (nf - 1) / 2) * (2 * w * ms / nf) * 0.8
+        fl = h * (0.07 if k in (0, nf - 1) else 0.045)
+        fw = w * 0.022
+        tri = (yy >= my - h * 0.05) & (yy <= my - h * 0.05 + fl) &               (np.abs(xx - fx) <= fw * (1 - (yy - (my - h * 0.05)) / fl))
+        H = np.where(tri & (mouth > 0), 0.55, H)
+    return np.clip(H, 0, 1.2)
+
+
+def emboss(Hm, col, n, light=(-0.6, -0.8)):
+    gy, gx = np.gradient(Hm * 6)
+    lam = np.clip((-gx * light[0] - gy * light[1] + 0.7) / np.sqrt(gx * gx + gy * gy + 1), 0, 1.3)
+    shade = (0.45 + 0.7 * lam) * (0.8 + 0.35 * Hm) * (1 + 0.08 * n)
+    return col * shade[..., None]
+
+
+def screen(col, w, h, seed, family_seed):
+    rng = np.random.default_rng(seed)
+    frng = np.random.default_rng(family_seed)
+    out = col * 0.8
+    m = max(3, min(w, h) // 8)
+    y0, y1, x0, x1 = m, h - m, m, w - m
+    out[y0 - 1:y1 + 1, x0 - 1:x1 + 1] = col[y0:y1 + 2, x0:x1 + 2].mean((0, 1)) * 0.35
+    glow = np.array(frng.choice([(60, 220, 90), (80, 180, 255), (230, 200, 60)]), np.float32)
+    out[y0:y1, x0:x1] = glow * 0.12
+    for y in range(y0 + 2, y1 - 2, 3):
+        L = int(rng.integers(2, max(3, x1 - x0 - 4)))
+        out[y, x0 + 2:x0 + 2 + L] = glow * rng.uniform(0.6, 1.0)
+    out[y0:y1:2, x0:x1] *= 0.85                       # scanlines
+    return out
+
+
+def special(name, col, w, h, seed, n):
+    if name.startswith(SCREENS):   # SMONxA..D are animation frames of one screen: same colour
+        return screen(col, w, h, seed, sum(map(ord, name[:5])))
+    if name in FACES:
+        return emboss(relief_face(w, h, seed, horns=not name.startswith("CFACE")), col, n)
+    return None
