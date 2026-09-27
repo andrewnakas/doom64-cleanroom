@@ -111,6 +111,63 @@ def shaded_sprite(e, w, h):
     return np.dstack([rgb, a]).clip(0, 255).astype(np.uint8)
 
 
+WEAPONS = ("SAWG", "PUNG", "PISG", "SHT1", "SHT2", "CHGG", "ROCK", "PLAS", "BFGG", "LASR")
+EMISSIVE = ("BAL1", "BAL2", "BAL3", "BAL7", "BAL8", "BFS1", "BFE2", "PLSS", "APLS", "MISL", "BEXP",
+            "MANF", "RBAL", "FIRE", "BFLM", "RFLM", "YFLM", "PUF", "TFOG", "LASS", "TRCR", "BOLT",
+            "PLSM", "SKUL", "CAND", "LMP")
+
+
+def luminance(c):
+    return np.asarray(c, np.float32) @ np.array([0.3, 0.59, 0.11], np.float32)
+
+
+def span_coords(m):
+    """Per pixel: position across its horizontal run of opaque pixels, -1..1 (for tube shading)."""
+    h, w = m.shape
+    u = np.zeros((h, w), np.float32)
+    for y in range(h):
+        row = m[y]
+        if not row.any():
+            continue
+        d = np.diff(np.concatenate([[0], row.astype(np.int8), [0]]))
+        for x0, x1 in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)):
+            n = x1 - x0
+            u[y, x0:x1] = (np.arange(n) + 0.5) / n * 2 - 1
+    return u
+
+
+def metal_sprite(e, w, h):
+    a = alpha_of(e, w, h)
+    m = a > 0
+    col = upsample_grid(e["grid"], w, h)
+    # keep the hue, lift very dark greys so the metal reads
+    base = np.maximum(col, luminance(col)[..., None] * 0.35 + 25)
+    u = ndimage.gaussian_filter(span_coords(m), 0.7)
+    tube = np.sqrt(np.clip(1 - u * u, 0, 1))
+    spec = np.exp(-((u + 0.35) / 0.18) ** 2)
+    d = ndimage.distance_transform_edt(m)
+    ys = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+    shade = (0.35 + 0.75 * tube) * (1.1 - 0.35 * ys)
+    shade *= 1.0 + 0.05 * noise(h32("metal", e["name"]), w, h, cell=3.0)
+    rgb = base * shade[..., None] + 120 * spec[..., None] * (d > 1)[..., None]
+    rgb[(d <= 1) & m] *= 0.45
+    return np.dstack([rgb, a]).clip(0, 255)
+
+
+def emissive_sprite(e, w, h):
+    a = alpha_of(e, w, h)
+    m = a > 0
+    col = upsample_grid(e["grid"], w, h)
+    d = ndimage.distance_transform_edt(m).astype(np.float32)
+    dm = d.max() if d.max() > 0 else 1
+    t = ndimage.gaussian_filter(np.clip(d / max(2.0, dm * 0.8), 0, 1), max(0.8, dm / 8))
+    t = np.clip(t * (1 + 0.35 * noise(h32("flame", e["name"]), w, h, cell=max(2.0, dm / 2), octaves=3)), 0, 1)
+    hot = np.clip(col * 1.6 + 60, 0, 255)
+    rgb = col[..., :] * (0.45 + 0.6 * t[..., None]) + (hot - col) * (t[..., None] ** 3)
+    rgb += 255 * np.clip(t - 0.85, 0, 1)[..., None] * 2.5
+    return np.dstack([rgb, a]).clip(0, 255)
+
+
 def textured(e, w, h, amount=0.10):
     col = upsample_grid(e["grid"], w, h)
     n = noise(h32("tex", e["name"]), w, h, cell=8.0, octaves=3)
@@ -147,6 +204,13 @@ def image_for(e):
         return cloud_image(e, w, h)
     if e["kind"] == "texture":
         return textured(e, w, h)
+    if e["kind"] == "sprite" and e["name"].startswith(WEAPONS):
+        # first-person weapons: bright frames are muzzle flashes
+        if luminance(np.asarray(e["grid"]).mean(0)) > 150:
+            return emissive_sprite(e, w, h)
+        return metal_sprite(e, w, h)
+    if e["kind"] == "sprite" and e["name"].startswith(EMISSIVE):
+        return emissive_sprite(e, w, h)
     if e["kind"] in ("sprite", "sprite_gfx"):
         return shaded_sprite(e, w, h)
     return textured(e, w, h, 0.06)
