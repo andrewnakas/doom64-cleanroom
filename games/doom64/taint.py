@@ -51,7 +51,10 @@ def windows(b: bytes, step=1):
 
 
 def low_info(w: bytes) -> bool:
-    """A colour ramp (16-bit values in arithmetic progression) padded with zeros, at either alignment."""
+    """A colour ramp (16-bit values in arithmetic progression) padded with zeros, at either alignment,
+    or 4-bit index data using at most 3 distinct nibbles (a smooth gradient run)."""
+    if len({n for b in w for n in (b >> 4, b & 15)}) <= 3:
+        return True
     for ph in (0, 1):
         v = [w[i] << 8 | w[i + 1] for i in range(ph, len(w) - 1, 2)]
         while v and v[0] == 0:

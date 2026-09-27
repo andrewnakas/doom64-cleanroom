@@ -6,6 +6,8 @@ set -o pipefail
 W="${1:-D:/n64work/doom64}"
 HERE=$(cd "$(dirname "$0")" && pwd); REPO="$HERE/../.."
 RETAIL="$W/rom/Doom 64 (USA) (Rev 1).z64"
+# C: fills up on this shared machine: keep compiler/python temp files on the work drive
+mkdir -p "$W/tmp"; export TMP="$W/tmp" TEMP="$W/tmp" TMPDIR="$W/tmp"
 python "$HERE/generate.py" "$W/spec" "$W/clean/Data" | tail -2
 python "$HERE/build_rom.py" --src "$W/pristine/doom64" --data "$W/clean/Data" --code "$W/dirty/code" \
     --out "$W/build/clean.z64" --ultralib "$W/ultralib" | tail -1

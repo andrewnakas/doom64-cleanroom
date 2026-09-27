@@ -228,6 +228,10 @@ def main():
     src, data, code, bdir, ul = map(Path, (a.src, a.data, a.code, a.build, a.ultralib))
     bdir.mkdir(parents=True, exist_ok=True)
     os.environ["PATH"] = str(BIN) + os.pathsep + os.environ["PATH"]
+    tmp = bdir / "tmp"          # GCC temp files: never on C: (full on the shared machine)
+    tmp.mkdir(exist_ok=True)
+    for k in ("TMP", "TEMP", "TMPDIR"):
+        os.environ[k] = str(tmp)
 
     lib = build_ultralib(ul, bdir)
     inc = ["-I", str(src), "-I", str(ul / "include"), "-I", str(ul / "include/PR"),
