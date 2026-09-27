@@ -1,12 +1,15 @@
 # Doom 64 clean room: status
 
 ## For the morning
-- **Play**: https://andrewnakas.github.io/doom64-cleanroom/ (once published; see "Publish" below).
+- **Play**: https://andrewnakas.github.io/doom64-cleanroom/ (published 2026-09-27 ~00:45; republished after each
+  improvement by `sh games/doom64/publish.sh`, which refuses to push unless both taint scans pass).
   Keyboard: arrows = stick, W/S forward/back, A/D strafe, Space fire, E use, Shift run, Q/R weapons
   (Q = A = select in menus, R = B = back), M map, Enter = Start. Gamepad: RT fire, A use, LB/RB strafe.
 - **Voices**: Doom 64 has no speech, so there is nothing to record: no placeholder voices, no practice pack.
-- **Look at**: sprites (monsters are silhouette + coarse colour + rounded shading; no faces yet),
-  title / menu font / skull cursor / credits (drawn), textures (colour grid + noise: flat-ish).
+- **Look at**: sprites (silhouette + coarse colour + rounded shading; eyes on front frames; metal weapons;
+  glowing effects), title / menu font / skull cursor / credits / end picture (drawn), textures (structured:
+  stone / riveted panels / cracked rock / liquids, tile seamlessly).
+- **Machine**: C: was at 0 bytes free around 01:00 (other sessions); this game keeps temp files on D:.
 - Headless FPS drops seen tonight were host load (the original retail ROM dropped the same way).
 
 ## Decisions (log)
@@ -39,11 +42,14 @@
   own key-mapping storage key (all clean-room sites share the github.io origin).
 
 ## What works
+- Gameplay verified with a dev-only autostart build (clean data, `DEV_AUTOSTART` patch in a copy of the
+  source, never published): HUD labels + counters, pickup messages ("YOU GOT THE SHOTGUN!"), weapons,
+  damage, movement/fire/use from the keyboard map.
 - Clean ROM boots in N64Wasm: legal screen (re-typeset), title flyover demo, menus (pak prompt, New Game,
   Options, skill select) in our font with our cursor; demo gameplay renders with clean sprites/textures/sky.
 - Taint: `games/doom64/taint.py` (byte windows, image detail correlation, ROM data), `audio_taint.py`
   (0 flagged, max xcorr 0.48).
 
 ## Next
-- publish (repo + gh-pages), then: monster faces/eyes on front frames, weapon (first-person) detail,
-  item icons (medkit cross, armor, keys), textures with structure (bricks/panels), FINAL picture.
+- sprite detail beyond eyes (mouths/teeth on demons, armour sheen), key card/skull pickups, textures with
+  faces/emblems (C1, C306, SMON* screens), menu lower-case glyphs, sky (CLOUD) variety; audio listening pass.
