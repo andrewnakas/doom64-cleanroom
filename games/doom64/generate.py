@@ -168,6 +168,71 @@ def emissive_sprite(e, w, h):
     return np.dstack([rgb, a]).clip(0, 255)
 
 
+# Faces: which monster families get eyes on front-facing frames, and how.
+# kind: "pair" = two eyes in the head (topmost part of the silhouette),
+#       "cyclops" = one big eye in the middle of the body.
+EYES = {"TROO": ("pair", (255, 170, 30)), "SARG": ("pair", (255, 60, 30)), "BOSS": ("pair", (120, 255, 60)),
+        "BOS2": ("pair", (255, 200, 60)), "FATT": ("pair", (255, 210, 60)), "POSS": ("pair", (255, 40, 30)),
+        "CYBR": ("pair", (255, 60, 20)), "BSPI": ("pair", (60, 200, 255)), "RECT": ("pair", (255, 230, 90)),
+        "SKUL": ("pair", (255, 240, 200)), "PLAY": ("visor", (90, 200, 90)),
+        "HEAD": ("cyclops", (60, 230, 60)), "PAIN": ("cyclops", (255, 200, 60))}
+
+
+def front_facing(name):
+    """Frame name AAAAFr[Fr]: rotation 1 = facing the viewer (rotation 0 frames are deaths/gibs)."""
+    return len(name) >= 6 and name[4].isalpha() and name[5] == "1"
+
+
+def add_eyes(img, e):
+    fam, name = e["name"][:4], e["name"]
+    if fam not in EYES or not front_facing(name):
+        return img
+    kind, color = EYES[fam]
+    h, w = img.shape[:2]
+    m = img[..., 3] > 0
+    rows = np.flatnonzero(m.any(1))
+    if len(rows) < 12:
+        return img
+    top, bot = rows[0], rows[-1]
+    sh = bot - top + 1
+    out = img.astype(np.float32).copy()
+    if kind == "cyclops":
+        cy = top + sh * 0.45
+        xs = np.flatnonzero(m[int(cy)])
+        if len(xs) < 6:
+            return img
+        cx, r = xs.mean(), max(2.0, (xs[-1] - xs[0]) * 0.13)
+        spots = [(cx, cy, r)]
+    else:
+        band = m[top:top + max(3, int(sh * (0.16 if kind != "visor" else 0.12)))]
+        cols = np.flatnonzero(band.any(0))
+        if len(cols) < 3 or (cols[-1] - cols[0]) > 0.45 * (np.flatnonzero(m.any(0))[-1] - np.flatnonzero(m.any(0))[0] + 1):
+            return img   # arms above the head or no clear head: leave it
+        cx = cols.mean()
+        hw = cols[-1] - cols[0] + 1
+        cy = top + sh * (0.085 if kind != "visor" else 0.07)
+        if kind == "visor":
+            y0, x0, x1 = int(round(cy)), int(round(cx - hw * 0.3)), int(round(cx + hw * 0.3)) + 1
+            seg = m[y0, x0:x1]
+            out[y0, x0:x1][seg] = (*color, 255)
+            return out
+        dx = max(1.0, hw * 0.2)
+        r = max(0.8, hw * 0.09)
+        spots = [(cx - dx, cy, r), (cx + dx, cy, r)]
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    for sx, sy, r in spots:
+        d = np.sqrt((xx - sx) ** 2 + (yy - sy) ** 2)
+        socket = (d <= r + 0.8) & m
+        out[socket, :3] *= 0.25
+        core = (d <= r) & m
+        glow = np.clip(1.2 - d / max(r, 0.5), 0, 1)[..., None]
+        out[core, :3] = (np.asarray(color, np.float32) * (0.6 + 0.4 * glow) + 60 * glow ** 2)[core].clip(0, 255)
+        if kind == "cyclops" and r >= 3:
+            pupil = (d <= r * 0.35) & m
+            out[pupil, :3] = (20, 10, 10)
+    return out
+
+
 def textured(e, w, h, amount=0.10):
     col = upsample_grid(e["grid"], w, h)
     n = noise(h32("tex", e["name"]), w, h, cell=8.0, octaves=3)
@@ -210,8 +275,10 @@ def image_for(e):
             return emissive_sprite(e, w, h)
         return metal_sprite(e, w, h)
     if e["kind"] == "sprite" and e["name"].startswith(EMISSIVE):
-        return emissive_sprite(e, w, h)
-    if e["kind"] in ("sprite", "sprite_gfx"):
+        return add_eyes(emissive_sprite(e, w, h), e)
+    if e["kind"] == "sprite":
+        return add_eyes(shaded_sprite(e, w, h), e)
+    if e["kind"] == "sprite_gfx":
         return shaded_sprite(e, w, h)
     return textured(e, w, h, 0.06)
 
