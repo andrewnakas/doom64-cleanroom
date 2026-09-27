@@ -351,7 +351,33 @@ def cloud_image(e, w, h):
     return np.dstack([v, v, v, np.full_like(v, 255)]).astype(np.uint8)
 
 
+def match_level(img, e):
+    """Keep the kept grid's mean brightness: shading patterns average below 1, which made the
+    world darker than the facts say. Rescale so the mean luminance over opaque pixels equals
+    that of the (unshaded) grid colour."""
+    img = np.asarray(img, np.float32)
+    h, w = img.shape[:2]
+    m = img[..., 3] > 0
+    if m.sum() < 4:
+        return img
+    ref = (upsample_grid_wrap if e["kind"] == "texture" else upsample_grid)(e["grid"], w, h)
+    target, have = luminance(ref[m]).mean(), luminance(img[..., :3][m]).mean()
+    if have > 1:
+        img[..., :3] *= np.clip(target / have, 0.8, 1.6)
+    return img
+
+
 def image_for(e):
+    img = _image_for(e)
+    if e["kind"] in ("texture", "sprite") and not (drawn and drawn.draw.__name__ and e["name"] in DRAWN_NAMES):
+        img = match_level(img, e)
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
+DRAWN_NAMES = ("SEXIT", "SEXITA", "?") + tuple(f"F_SKY{c}" for c in "ABCDEFGHIJK")
+
+
+def _image_for(e):
     m = e["meta"]
     w, h = m["width"], m["height"]
     if drawn is not None:
