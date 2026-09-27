@@ -262,13 +262,32 @@ def wall_texture(e, w, h):
 def item_decals(img, e):
     """Readable item markings drawn over the generated sprite (inside the kept outline)."""
     n = e["name"]
-    if n not in ("MEDIA0", "STIMA0", "SBOXA0"):
+    if n not in ("MEDIA0", "STIMA0", "SBOXA0") and not n.startswith(("RKEY", "BKEY", "YKEY", "RSKU", "BSKU", "YSKU")):
         return img
     out = img.astype(np.float32).copy()
     m = out[..., 3] > 0
     ys, xs = np.nonzero(m)
     y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
     cy, cx = (y0 + y1) / 2, (x0 + x1) / 2
+    keycol = {"R": (230, 30, 30), "B": (40, 90, 255), "Y": (245, 215, 40)}.get(n[0])
+    yy, xx = np.mgrid[0:img.shape[0], 0:img.shape[1]]
+    if n[1:4] == "KEY":        # key card: saturated body, white stripe, dark edge
+        out[m, :3] = np.array(keycol) * (0.8 + 0.2 * (yy[m] - y0) / max(1, y1 - y0))[:, None]
+        stripe = m & (np.abs(yy - (y0 + (y1 - y0) * 0.3)) <= max(0.6, (y1 - y0) * 0.08))
+        out[stripe, :3] = (235, 235, 235)
+        edge = m & ~ndimage.binary_erosion(m)
+        out[edge, :3] *= 0.5
+        return out
+    if n[1:4] == "SKU":        # skull key: bone skull tinted by the key colour, dark sockets
+        out[m, :3] = np.array(keycol) * 0.45 + np.array([200, 190, 170]) * 0.55
+        ey = y0 + (y1 - y0) * 0.38
+        for side in (-1, 1):
+            ex = cx + side * (x1 - x0) * 0.2
+            sock = m & (((yy - ey) / max(1, (y1 - y0) * 0.12)) ** 2 + ((xx - ex) / max(1, (x1 - x0) * 0.13)) ** 2 <= 1)
+            out[sock, :3] = (25, 10, 10)
+        jaw = m & (yy > y0 + (y1 - y0) * 0.7) & ((xx - x0) % 2 == 0)
+        out[jaw, :3] *= 0.5
+        return out
     if n in ("MEDIA0", "STIMA0"):
         out[m, :3] = out[m, :3] * 0.35 + np.array([200, 200, 195]) * 0.65     # white case
         arm = max(1, int((x1 - x0) * 0.09))

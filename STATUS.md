@@ -44,12 +44,15 @@
 ## What works
 - Gameplay verified with a dev-only autostart build (clean data, `DEV_AUTOSTART` patch in a copy of the
   source, never published): HUD labels + counters, pickup messages ("YOU GOT THE SHOTGUN!"), weapons,
-  damage, movement/fire/use from the keyboard map.
+  damage, movement/fire/use from the keyboard map, automap (line + textured modes), level title.
+- Audio verified in the page (?audiolog=1): clean RMS 200-1200 during play vs 550-1240 for retail data.
+- Drawn detail passes: monster eyes (front frames), carved demon-mask wall textures (19), computer screens
+  (SMON*, one colour per animated screen), key cards / skull keys, medikit / stimpack crosses, FINAL scene.
 - Clean ROM boots in N64Wasm: legal screen (re-typeset), title flyover demo, menus (pak prompt, New Game,
   Options, skill select) in our font with our cursor; demo gameplay renders with clean sprites/textures/sky.
 - Taint: `games/doom64/taint.py` (byte windows, image detail correlation, ROM data), `audio_taint.py`
   (0 flagged, max xcorr 0.48).
 
 ## Next
-- sprite detail beyond eyes (mouths/teeth on demons, armour sheen), key card/skull pickups, textures with
-  faces/emblems (C1, C306, SMON* screens), menu lower-case glyphs, sky (CLOUD) variety; audio listening pass.
+- demon (pinky) jaws, emblem/pentagram textures (C77, CASFL28, HTEL*), switch textures (SWX*: button states
+  via palette variants), brighter lighting check vs retail, an audio listening pass (music timbres).
