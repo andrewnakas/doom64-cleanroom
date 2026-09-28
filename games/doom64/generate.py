@@ -284,6 +284,9 @@ def grate_texture(e, w, h):
     gy, gx = np.gradient(hgt * 3)
     lam = np.clip((gx * 0.45 + gy * 0.6 + 0.66) / np.sqrt(gx * gx + gy * gy + 1), 0, 1)
     lam = lam[h:2 * h, w:2 * w]
+    if d.max() <= 2.0:
+        # 1-2 px lattices: edge shading would only trace the kept outline; flat metal + our grain
+        lam = 0.62 + 0.25 * np.clip(noise(h32("grate", e["name"]), w, h, cell=2.0), -1, 1)
     col = upsample_grid_wrap(e["grid"], w, h)
     base = np.maximum(col, luminance(col)[..., None] * 0.5 + 20)
     spec = np.clip(lam - 0.8, 0, 1) * 250
