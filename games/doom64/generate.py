@@ -274,7 +274,26 @@ def upsample_grid_wrap(g, w, h):
     return top * (1 - fy) + bot * fy
 
 
+def grate_texture(e, w, h):
+    """See-through textures (grates, fences, bars): the kept alpha outline is the bars; shade them as
+    rounded metal. Lighting is computed on a 3x3 tiling so bars stay seamless across the wrap."""
+    a = alpha_of(e, w, h)
+    m = np.tile(a > 0, (3, 3))
+    d = ndimage.distance_transform_edt(m).astype(np.float32)
+    hgt = ndimage.gaussian_filter(np.sqrt(np.minimum(d, 3.0) / 3.0), 0.8)
+    gy, gx = np.gradient(hgt * 3)
+    lam = np.clip((gx * 0.45 + gy * 0.6 + 0.66) / np.sqrt(gx * gx + gy * gy + 1), 0, 1)
+    lam = lam[h:2 * h, w:2 * w]
+    col = upsample_grid_wrap(e["grid"], w, h)
+    base = np.maximum(col, luminance(col)[..., None] * 0.5 + 20)
+    spec = np.clip(lam - 0.8, 0, 1) * 250
+    rgb = base * (0.35 + 0.85 * lam)[..., None] + spec[..., None]
+    return np.dstack([rgb, a]).clip(0, 255).astype(np.uint8)
+
+
 def wall_texture(e, w, h):
+    if "alpha2" in e and e["name"] != "BLANK":
+        return grate_texture(e, w, h)
     import textures
     col = textures.synth(e["name"], upsample_grid_wrap(e["grid"], w, h), w, h, h32("tex", e["name"]))
     return np.dstack([col, alpha_of(e, w, h)]).clip(0, 255).astype(np.uint8)
