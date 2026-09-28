@@ -42,6 +42,8 @@
   own key-mapping storage key (all clean-room sites share the github.io origin).
 
 ## What works
+- **Live site verified end to end (2026-09-28)**: legal -> flyover demo -> title menu -> New Game -> pak
+  prompt -> in game at 30 fps with HUD, firing, our screens/textures (headless Edge, real key events).
 - Gameplay verified with a dev-only autostart build (clean data, `DEV_AUTOSTART` patch in a copy of the
   source, never published): HUD labels + counters, pickup messages ("YOU GOT THE SHOTGUN!"), weapons,
   damage, movement/fire/use from the keyboard map, automap (line + textured modes), level title.
@@ -59,5 +61,7 @@
   (`audio_gen._tonal`); sound effects are resynthesised noise from the outline. Say which ones sound wrong.
 - Lighting: each image's mean brightness now matches its kept grid (it was 10-30% dark). Rooms like the
   MAP01 start are still dim because of the map's own sector lights (kept); Options > Brightness helps.
-- remaining polish: grate/emblem textures with alpha (C77, CASFL28), armour sheen.
+- Done since: see-through textures (15 grates/fences/bars) as rounded metal bars, seamless (thin 1-2 px
+  lattices flat so they don't trace the kept outline); glossy armour vests (hue kept).
+- Nothing left on my list except what needs your ears/eyes (music timbres, overall look).
 - Disk: this game uses ~0.2 GB on D: (browser profiles are now deleted after each headless shot).
