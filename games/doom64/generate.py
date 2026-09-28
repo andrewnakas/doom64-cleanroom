@@ -108,6 +108,10 @@ def shaded_sprite(e, w, h):
         shade = np.where(rim, shade * 0.55, shade)
     shade *= 1.0 + (0.18 if tiny else 0.06) * noise(h32("grain", e["name"]), w, h, cell=2.0)
     rgb = col * shade[..., None]
+    if e["name"].startswith(("ARM1", "ARM2")):   # armour vests: glossy highlight, hue kept
+        sl = ndimage.gaussian_filter(lam, 2.0)
+        gloss = (np.clip(sl - 0.62, 0, 1) / 0.38) ** 1.5 * (~rim if not tiny else m)
+        rgb += gloss[..., None] * (90 + 0.8 * col)
     return np.dstack([rgb, a]).clip(0, 255).astype(np.uint8)
 
 
