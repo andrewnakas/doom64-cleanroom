@@ -9,10 +9,11 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
 //   labels   {A:'FIRE', ...}   small caption under a button
 //   hide     ['L', 'CR']       buttons the game does not use
 //   hint     'text'            one line shown in portrait
-//   adapter  'n64wasm' | 'gamepad' | 'none'   how state reaches the game (default 'gamepad')
+//   adapter  'n64wasm' | 'ejs' | 'gamepad' | 'none'   how state reaches the game (default 'gamepad')
 //   map      {A:0, B:2, ...}   for 'gamepad': N64 button -> standard gamepad button index
 //   canvas   '#canvas'         the game canvas to place in the screen area
 //   takeover true              hide the rest of the page while the pad is shown
+//   waitFor  '#start'          for 'gamepad': a start screen that must be gone before the pad appears
 //
 // State is always available to a shell's own code as window.cleanroomPad.sample():
 //   {A,B,Start,Z,L,R,CU,CD,CL,CR,DU,DD,DL,DR, x, y}   buttons 0/1, stick -1..1 with up = +y
@@ -61,6 +62,7 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   #cr-root { position:fixed; inset:0; background:#000; color:#fff; z-index:2147483000;
              font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
   #cr-screen { position:absolute; background:#000; display:flex; align-items:center; justify-content:center; }
+  #cr-screen > * { width:100% !important; height:100% !important; max-width:none !important; max-height:none !important; }
   #cr-screen canvas { width:100% !important; height:100% !important; object-fit:contain; display:block; image-rendering:auto; }
   .cr-btn { position:absolute; display:flex; flex-direction:column; align-items:center; justify-content:center;
             border-radius:50%; font-weight:800; letter-spacing:.5px; touch-action:none; box-sizing:border-box;
@@ -364,8 +366,34 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
       ev.gamepad = virtualPad();
       window.dispatchEvent(ev);
     };
-    const start = () => { build(); announce(); const wait = setInterval(() => { if (adopt()) { clearInterval(wait); layout(); } }, 300); };
+    const start = () => {
+      // A shell with its own start screen keeps it until the player has tapped it.
+      if (CFG.waitFor && document.querySelector(CFG.waitFor)) { setTimeout(start, 300); return; }
+      build(); announce();
+      const wait = setInterval(() => { if (adopt()) { clearInterval(wait); layout(); } }, 300);
+    };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
+
+  // EmulatorJS: inject into its input manager once the game has started. A physical controller is handled by
+  // EmulatorJS itself, so only touch state is sent. Ids: 0 A, 1 B, 3 Start, 4-7 D-pad, 10 L, 11 R, 12 Z,
+  // 16/17 stick right/left, 18/19 stick down/up, 20-23 C right/left/down/up.
+  function installEJS() {
+    const ID = { A: 0, B: 1, Start: 3, DU: 4, DD: 5, DL: 6, DR: 7, L: 10, R: 11, Z: 12, CR: 20, CL: 21, CD: 22, CU: 23 };
+    const sent = {};
+    const send = (gm, id, v) => { if (sent[id] !== v) { sent[id] = v; gm.simulateInput(0, id, v); } };
+    el('style', null, '.ejs_virtualGamepad_parent { display:none !important; }', document.head);
+    const tick = () => {
+      requestAnimationFrame(tick);
+      const e = window.EJS_emulator, gm = e && e.started && e.gameManager;
+      if (!gm) return;
+      if (!built) build();
+      if (realPad()) return;
+      for (const k in ID) send(gm, ID[k], S[k] ? 1 : 0);
+      const ax = v => Math.round(Math.max(0, v) * 0x7fff);
+      send(gm, 16, ax(S.x)); send(gm, 17, ax(-S.x)); send(gm, 18, ax(-S.y)); send(gm, 19, ax(S.y));
+    };
+    requestAnimationFrame(tick);
   }
 
   window.cleanroomPad = {
@@ -375,4 +403,7 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
     adopt, layout,
   };
   if (want && CFG.adapter === 'gamepad') installVirtualPad();
+  if (want && CFG.adapter === 'ejs') {
+    if (document.head) installEJS(); else document.addEventListener('DOMContentLoaded', installEJS);
+  }
 })();
