@@ -9,10 +9,15 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
 //   labels   {A:'FIRE', ...}   small caption under a button
 //   hide     ['L', 'CR']       buttons the game does not use
 //   hint     'text'            one line shown in portrait
-//   adapter  'n64wasm' | 'ejs' | 'gamepad' | 'none'   how state reaches the game (default 'gamepad')
+//   adapter  'n64wasm' | 'ejs' | 'gamepad' | 'mask' | 'keys' | 'none'   how state reaches the game (default 'gamepad')
+//   keys     {A:['KeyE','Enter'], up:'KeyW', ...}   for adapter 'keys': keyboard codes per button and stick direction
+//   sink     'module' | 'touchPad'   for 'mask': Module._web_touch_input(mask, x, y) or window.__touchPad
 //   map      {A:0, B:2, ...}   for 'gamepad': N64 button -> standard gamepad button index
 //   canvas   '#canvas'         the game canvas to place in the screen area
 //   takeover true              hide the rest of the page while the pad is shown
+//   float    true              leave the game element where it is in the page and position it under the pad
+//                              (for runtimes that break when their element is moved, such as EmulatorJS)
+//   css      '...'             extra page CSS while the pad or embedded mode is active
 //   waitFor  '#start'          for 'gamepad': a start screen that must be gone before the pad appears
 //
 // State is always available to a shell's own code as window.cleanroomPad.sample():
@@ -27,6 +32,12 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   window.cleanroomTouchWanted = want;   // read by the N64Wasm page hook
   // Framed in another page (the catalogue site) without touch: show only the game, with no pad.
   const framed = !want && (q.get('embed') === '1' || window.top !== window);
+
+  // A start screen the build shows first: still there and visible?
+  function waiting() {
+    const e = CFG.waitFor && document.querySelector(CFG.waitFor);
+    return !!e && getComputedStyle(e).display !== 'none';
+  }
 
   const KEYS = ['A', 'B', 'Start', 'Z', 'L', 'R', 'CU', 'CD', 'CL', 'CR', 'DU', 'DD', 'DL', 'DR'];
   const S = { x: 0, y: 0 };
@@ -60,7 +71,11 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   html.cr-on, html.cr-on body { background:#000 !important; overscroll-behavior:none; }
   body.cr-touch { margin:0; overflow:hidden; touch-action:none; -webkit-user-select:none; user-select:none;
                   -webkit-touch-callout:none; position:fixed; inset:0; }
-  body.cr-touch.cr-takeover > *:not(#cr-root):not(#soundBtn):not(script) { display:none !important; }
+  body.cr-touch.cr-takeover > *:not(#cr-root):not(#soundBtn):not(.cr-float):not(script) { display:none !important; }
+  body.cr-floating #cr-root, body.cr-floating #cr-screen { background:transparent; pointer-events:none; }
+  body.cr-floating #cr-root > * { pointer-events:auto; }
+  body.cr-floating #cr-screen { pointer-events:none !important; }
+  .cr-float { position:fixed !important; margin:0 !important; z-index:2147482000; }
   #cr-root { position:fixed; inset:0; background:#000; color:#fff; z-index:2147483000;
              font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
   #cr-screen { position:absolute; background:#000; display:flex; align-items:center; justify-content:center; }
@@ -112,7 +127,7 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   function build() {
     if (built) return;
     built = true;
-    el('style', null, css, document.head);
+    el('style', null, css + (CFG.css || ''), document.head);
     const vp = document.querySelector('meta[name=viewport]') || el('meta', null, null, document.head);
     vp.setAttribute('name', 'viewport');
     vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
@@ -154,16 +169,21 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   }
 
   // Move the game canvas into the screen area (it may not exist yet when the pad is built).
-  let hold = false;
+  let hold = false, floated = null;
   function adopt() {
     if (hold) return false;
     const c = document.querySelector(CFG.canvas);
-    if (c && screen && c.parentNode !== screen) screen.appendChild(c);
+    if (c && CFG.float) {
+      floated = c;
+      c.classList.add('cr-float');
+      document.body.classList.add('cr-floating');
+    } else if (c && screen && c.parentNode !== screen) screen.appendChild(c);
     return !!c;
   }
 
   function place(e, x, y, w, h, fs) {
     if (!e) return;
+    if (e === screen && floated) place(floated, x, y, w, h);
     e.style.left = x + 'px'; e.style.top = y + 'px'; e.style.width = w + 'px'; e.style.height = h + 'px';
     if (fs) e.style.fontSize = fs + 'px';
   }
@@ -375,7 +395,7 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
     };
     const start = () => {
       // A shell with its own start screen keeps it until the player has tapped it.
-      if (CFG.waitFor && document.querySelector(CFG.waitFor)) { setTimeout(start, 300); return; }
+      if (waiting()) { setTimeout(start, 300); return; }
       build(); announce();
       const wait = setInterval(() => { if (adopt()) { clearInterval(wait); layout(); } }, 300);
     };
@@ -403,6 +423,69 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
     requestAnimationFrame(tick);
   }
 
+  // N64 button mask + stick in -80..80: for shells whose own touch code already feeds the game this way.
+  const BIT = { A: 0x8000, B: 0x4000, Z: 0x2000, Start: 0x1000, DU: 0x0800, DD: 0x0400, DL: 0x0200, DR: 0x0100,
+    L: 0x0020, R: 0x0010, CU: 0x0008, CD: 0x0004, CL: 0x0002, CR: 0x0001 };
+  function installMask() {
+    const start = () => {
+      if (waiting()) { setTimeout(start, 300); return; }
+      build();
+      const wait = setInterval(() => { if (adopt()) { clearInterval(wait); layout(); } }, 300);
+      // The exported function aborts the program if it is called before the runtime is up.
+      let ready = false;
+      if (CFG.sink !== 'touchPad' && window.Module) {
+        if (Module.calledRun) ready = true;
+        const prev = Module.onRuntimeInitialized;
+        Module.onRuntimeInitialized = function () { if (prev) prev.apply(this, arguments); ready = true; };
+      }
+      const tick = () => {
+        requestAnimationFrame(tick);
+        // A physical controller is read by the game itself.
+        const live = !realPad();
+        let mask = 0;
+        if (live) for (const k in BIT) if (S[k]) mask |= BIT[k];
+        const x = live ? Math.round(S.x * 80) : 0, y = live ? Math.round(S.y * 80) : 0;
+        if (CFG.sink === 'touchPad') {
+          const t = window.__touchPad;
+          if (t) { t.buttons = mask; t.sx = x; t.sy = y; }
+        } else if (ready) Module._web_touch_input(mask, x, y);
+      };
+      requestAnimationFrame(tick);
+    };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
+
+  // Keyboard: for builds that only take keys. Buttons and the four stick directions become key presses.
+  const KEYCODE = { Enter: 13, Tab: 9, Space: 32, Escape: 27, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
+    ShiftLeft: 16, ControlLeft: 17 };
+  function keyEvent(type, code) {
+    const letter = /^Key([A-Z])$/.exec(code);
+    const kc = letter ? letter[1].charCodeAt(0) : KEYCODE[code] || 0;
+    const key = letter ? letter[1].toLowerCase() : code === 'Space' ? ' ' : code;
+    window.dispatchEvent(new KeyboardEvent(type, { code, key, keyCode: kc, which: kc, bubbles: true }));
+  }
+  function installKeys() {
+    const map = CFG.keys || {}, down = {};
+    const start = () => {
+      if (waiting()) { setTimeout(start, 300); return; }
+      build();
+      const wait = setInterval(() => { if (adopt()) { clearInterval(wait); layout(); } }, 300);
+      const tick = () => {
+        requestAnimationFrame(tick);
+        const on = { up: S.y > 0.4, down: S.y < -0.4, left: S.x < -0.4, right: S.x > 0.4 };
+        for (const k of KEYS) on[k] = !!S[k];
+        for (const k in map) {
+          const want = !!on[k] && !realPad();
+          if (want === !!down[k]) continue;
+          down[k] = want;
+          for (const code of [].concat(map[k])) keyEvent(want ? 'keydown' : 'keyup', code);
+        }
+      };
+      requestAnimationFrame(tick);
+    };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
+
   window.cleanroomPad = {
     wanted: want, state: S, sample,
     // For shells with their own input hook: build the overlay, then read sample() each frame.
@@ -412,13 +495,15 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   if (framed) {
     // Hide the build's own page until the game is running, then show just its canvas.
     const begin = () => {
+      // The build's own start screen stays visible until it has been clicked.
+      if (waiting()) { setTimeout(begin, 300); return; }
       hold = true;
       build();
       const note = el('div', 'cr-loading', 'Loading game…', root);
       const ready = () => {
         if (CFG.adapter === 'n64wasm') { const a = window.myApp; return !!(a && a.rivetsData && a.rivetsData.beforeEmulatorStarted === false); }
         if (CFG.adapter === 'ejs') { const e = window.EJS_emulator; return !!(e && e.started); }
-        return !(CFG.waitFor && document.querySelector(CFG.waitFor)) && !!document.querySelector(CFG.canvas);
+        return !(waiting()) && !!document.querySelector(CFG.canvas);
       };
       const wait = setInterval(() => {
         if (!ready()) return;
@@ -429,6 +514,8 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
     if (document.body) begin(); else document.addEventListener('DOMContentLoaded', begin);
   }
   if (want && CFG.adapter === 'gamepad') installVirtualPad();
+  if (want && CFG.adapter === 'mask') installMask();
+  if (want && CFG.adapter === 'keys') installKeys();
   if (want && CFG.adapter === 'ejs') {
     if (document.head) installEJS(); else document.addEventListener('DOMContentLoaded', installEJS);
   }
