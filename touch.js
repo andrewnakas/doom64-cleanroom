@@ -25,6 +25,8 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
   const want = forced || (q.get('touch') !== '0' && coarse);
   window.cleanroomTouchWanted = want;   // read by the N64Wasm page hook
+  // Framed in another page (the catalogue site) without touch: show only the game, with no pad.
+  const framed = !want && (q.get('embed') === '1' || window.top !== window);
 
   const KEYS = ['A', 'B', 'Start', 'Z', 'L', 'R', 'CU', 'CD', 'CL', 'CR', 'DU', 'DD', 'DL', 'DR'];
   const S = { x: 0, y: 0 };
@@ -88,6 +90,8 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
                    border-radius:14px; padding:5px 10px; font-size:13px; font-weight:700; }
   #cr-hint { position:absolute; left:0; right:0; text-align:center; font-size:11px; opacity:.55; pointer-events:none; }
   body.cr-land .cr-btn, body.cr-land #cr-base, body.cr-land #cr-knob { opacity:.72; }
+  body.cr-framed #cr-bar { display:none; }
+  #cr-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:15px; opacity:.7; }
   body.cr-pad .cr-btn, body.cr-pad #cr-stick, body.cr-pad #cr-hint, body.cr-pad #cr-mode { display:none !important; }
   `;
 
@@ -150,7 +154,9 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
   }
 
   // Move the game canvas into the screen area (it may not exist yet when the pad is built).
+  let hold = false;
   function adopt() {
+    if (hold) return false;
     const c = document.querySelector(CFG.canvas);
     if (c && screen && c.parentNode !== screen) screen.appendChild(c);
     return !!c;
@@ -169,9 +175,10 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
     const W = window.innerWidth, H = window.innerHeight;
     const land = W > H;
     document.body.classList.toggle('cr-land', land);
-    document.body.classList.toggle('cr-pad', padOn);
+    document.body.classList.toggle('cr-pad', padOn || framed);
+    document.body.classList.toggle('cr-framed', framed);
     const $ = id => document.getElementById('cr-' + id);
-    if (padOn) {   // a controller is in use: the screen takes everything
+    if (padOn || framed) {   // a controller is in use, or there is no pad: the screen takes everything
       const sw = Math.min(W, H / 0.75), sh = sw * 0.75;
       place(screen, (W - sw) / 2, (H - sh) / 2, sw, sh);
       return;
@@ -402,6 +409,25 @@ window.CLEANROOM_PAD = {"adapter": "n64wasm"};
     show() { if (document.body) build(); else document.addEventListener('DOMContentLoaded', build); },
     adopt, layout,
   };
+  if (framed) {
+    // Hide the build's own page until the game is running, then show just its canvas.
+    const begin = () => {
+      hold = true;
+      build();
+      const note = el('div', 'cr-loading', 'Loading game…', root);
+      const ready = () => {
+        if (CFG.adapter === 'n64wasm') { const a = window.myApp; return !!(a && a.rivetsData && a.rivetsData.beforeEmulatorStarted === false); }
+        if (CFG.adapter === 'ejs') { const e = window.EJS_emulator; return !!(e && e.started); }
+        return !(CFG.waitFor && document.querySelector(CFG.waitFor)) && !!document.querySelector(CFG.canvas);
+      };
+      const wait = setInterval(() => {
+        if (!ready()) return;
+        hold = false;
+        if (adopt()) { clearInterval(wait); note.remove(); layout(); }
+      }, 300);
+    };
+    if (document.body) begin(); else document.addEventListener('DOMContentLoaded', begin);
+  }
   if (want && CFG.adapter === 'gamepad') installVirtualPad();
   if (want && CFG.adapter === 'ejs') {
     if (document.head) installEJS(); else document.addEventListener('DOMContentLoaded', installEJS);
