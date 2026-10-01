@@ -716,6 +716,7 @@ class MyClass {
         let rom = q.get('rom') || window.SITE_ROM;
         if (q.get('rice')) myClass.rivetsData.ricePlugin = true;
         if (q.get('angry')) myClass.rivetsData.forceAngry = true;
+        if (window.cleanroomTouchWanted) window.cleanroomTouchInstall(myClass);
         if (rom) { myClass.rom_name = myClass.extractRomName(rom); myClass.load_url(rom); }
         if (q.get('keys')) window.cleanroomKeys(q.get('keys'));
         if (q.get('nosave')) myClass.SaveSram = function () {};
