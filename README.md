@@ -43,5 +43,9 @@ Regenerated monster sprites (front frames, with drawn eyes):
 Formats: `wadfmt.py` (sprites, textures, pictures, palettes; TMEM odd-row swizzle; tile restarts),
 `wessfmt.py` (WESS module: patches, sample table, books, loops; VADPCM).
 
+Licence: the game code is compiled from [DOOM64-RE](https://github.com/Erick194/DOOM64-RE), which is GPL-3.0,
+so this repository and the published `game.z64` are distributed under GPL-3.0 (`LICENSE`). The
+web runtime is N64Wasm (MIT) with the ParaLLEl N64 core (GPL-2.0); see `THIRD_PARTY.md` on the site.
+
 Fonts: Russo One and Anton (SIL Open Font License, `games/doom64/fonts/OFL.txt`).
 Doom and Doom 64 are trademarks of id Software; this is a non-commercial fan preservation project.
